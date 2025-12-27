@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 
 const SecureLoans = ({ onBack }) => {
@@ -6,14 +6,16 @@ const SecureLoans = ({ onBack }) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loanTrackingId, setLoanTrackingId] = useState('');
   const [isPaying, setIsPaying] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState(''); // 'pending', 'success', 'failed', 'cancelled'
-  const [clientReference, setClientReference] = useState('');
-  const [currentPollingStatus, setCurrentPollingStatus] = useState(''); // For live status logging in UI
+  const [paymentStatus, setPaymentStatus] = useState(''); // 'success', 'failed', 'cancelled'
+  const [clientReference, setClientReference] = useState(''); // Your own external ref (for tracking)
+  const [payheroReference, setPayheroReference] = useState(''); // PayHero's internal reference (used for polling)
+  const [currentPollingStatus, setCurrentPollingStatus] = useState('');
 
+  const intervalRef = useRef(null);
+
+  // Load user data and generate tracking ID
   useEffect(() => {
     const stored = JSON.parse(localStorage.getItem('okoaChapaaUser') || '{}');
-
-    // Generate Loan Tracking ID once and save it
     if (!stored.loanTrackingId) {
       const newId = 'OKC-' + Math.random().toString(36).substr(2, 9).toUpperCase();
       stored.loanTrackingId = newId;
@@ -22,61 +24,71 @@ const SecureLoans = ({ onBack }) => {
     } else {
       setLoanTrackingId(stored.loanTrackingId);
     }
-
     setUserData(stored);
     setPhoneNumber(stored.mpesaPhone || '');
   }, []);
 
-  // Polling every 2 seconds with status logging
+  // Continuous polling using PayHero's reference
   useEffect(() => {
-    if (!clientReference || paymentStatus) return;
+    if (!payheroReference) return;
 
-    const interval = setInterval(async () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
+    intervalRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`/api/status?reference=${clientReference}`);
+        const res = await fetch(`/api/transaction-status?reference=${payheroReference}`);
         const data = await res.json();
 
-        if (data.success) {
-          const rawStatus = data.status;
-          setCurrentPollingStatus(rawStatus); // Show live status in UI
+        if (data.success && data.status) {
+          const rawStatus = data.status.toUpperCase();
+          setCurrentPollingStatus(rawStatus);
 
-          // Optional: Log to console with timestamp like your backend
-          console.log(`[${new Date().toISOString()}] Polling status: ${rawStatus} (Reference: ${clientReference})`);
+          console.log(
+            `[${new Date().toISOString()}] Polling → ${rawStatus} ` +
+            `| PayHero Ref: ${payheroReference} ` +
+            `| Client Ref: ${clientReference} ` +
+            `| Phone: 0${phoneNumber} ` +
+            `| Amount: KES ${(userData.securityFee || userData.fee || 0).toLocaleString()} ` +
+            `| Tracking: ${loanTrackingId}`
+          );
 
           if (rawStatus === 'SUCCESS') {
             setPaymentStatus('success');
             toast.success('🎉 Payment Successful! Your loan has been approved and sent!', {
-              duration: 8000,
+              duration: 12000,
             });
-            clearInterval(interval);
+            clearInterval(intervalRef.current);
           } else if (rawStatus === 'FAILED') {
             setPaymentStatus('failed');
-            toast.error('Payment failed. Please try again.');
-            clearInterval(interval);
+            toast.error('Payment failed. Please try again.', { duration: 8000 });
+            clearInterval(intervalRef.current);
           } else if (rawStatus === 'CANCELLED') {
             setPaymentStatus('cancelled');
-            toast('Payment was cancelled. You can try again.', { icon: '⚠️' });
-            clearInterval(interval);
+            toast('Payment was cancelled. You can try again.', { icon: '⚠️', duration: 8000 });
+            clearInterval(intervalRef.current);
           }
-          // QUEUED / PENDING → continue polling and show live status
+        } else {
+          console.warn('Unexpected polling response:', data);
         }
       } catch (err) {
-        console.error('Polling error:', err);
+        console.error('Polling error (likely 404 or HTML page):', err);
+        // Don't spam toast on network errors
       }
     }, 2000);
 
-    return () => clearInterval(interval);
-  }, [clientReference, paymentStatus]);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [payheroReference, phoneNumber, userData, loanTrackingId, clientReference]);
 
   const handlePaySecurityFee = async () => {
     if (phoneNumber.length !== 9 || isPaying) return;
 
     setIsPaying(true);
-    setPaymentStatus('pending');
-    setCurrentPollingStatus(''); // Reset live status
+    setCurrentPollingStatus('INITIATING');
 
-    const ref = `OKC-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    setClientReference(ref);
+    const clientRef = `OKC-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    setClientReference(clientRef);
 
     try {
       const res = await fetch('/api/stk-push', {
@@ -85,29 +97,36 @@ const SecureLoans = ({ onBack }) => {
         body: JSON.stringify({
           phoneNumber: `0${phoneNumber}`,
           amount: userData.securityFee || userData.fee || 0,
-          reference: ref,
+          reference: clientRef,
         }),
       });
 
       const data = await res.json();
 
-      if (data.success) {
-        toast('📱 STK Push sent! Please check your phone to complete the payment.', {
+      if (data.success && data.payheroReference) {
+        setPayheroReference(data.payheroReference); // This is the key fix!
+
+        toast.success('📱 STK Push sent! Please check your phone and complete payment.', {
           icon: '💸',
-          duration: 8000,
-          style: { fontSize: '16px' },
+          duration: 10000,
         });
+
+        console.log(
+          `[${new Date().toISOString()}] STK Push success | ` +
+          `Client Ref: ${clientRef} | PayHero Ref: ${data.payheroReference}`
+        );
       } else {
-        toast.error(`Payment initiation failed: ${data.error || 'Please try again'}`);
-        setIsPaying(false);
-        setPaymentStatus('');
-        setClientReference('');
+        throw new Error(data.error || 'No PayHero reference returned');
       }
     } catch (err) {
-      toast.error('Network error. Please check your connection and try again.');
+      toast.error('Failed to initiate payment. Please try again.');
+      console.error('STK Push failed:', err);
+
+      // Reset all states
       setIsPaying(false);
-      setPaymentStatus('');
       setClientReference('');
+      setPayheroReference('');
+      setCurrentPollingStatus('');
     }
   };
 
@@ -116,6 +135,20 @@ const SecureLoans = ({ onBack }) => {
   }
 
   const securityFee = userData.securityFee || userData.fee || 0;
+
+  const getDisplayStatus = () => {
+    if (!payheroReference) return 'READY TO PAY';
+    if (!currentPollingStatus) return 'WAITING FOR PAYMENT...';
+    switch (currentPollingStatus) {
+      case 'INITIATING': return 'SENDING REQUEST...';
+      case 'QUEUED': return 'QUEUED – WAITING FOR M-PESA';
+      case 'PENDING': return 'CHECK YOUR PHONE FOR PROMPT';
+      case 'PROCESSING': return 'PROCESSING PAYMENT...';
+      default: return currentPollingStatus;
+    }
+  };
+
+  const isPollingActive = payheroReference && !paymentStatus;
 
   return (
     <>
@@ -230,7 +263,7 @@ const SecureLoans = ({ onBack }) => {
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 9))}
                     maxLength="9"
-                    disabled={isPaying || paymentStatus === 'success'}
+                    disabled={isPaying || !!paymentStatus}
                     className="w-full px-5 py-4 text-base border border-gray-300 rounded-r-2xl focus:outline-none focus:ring-4 focus:ring-secondary/30 disabled:bg-gray-100"
                     placeholder="712345678"
                   />
@@ -238,19 +271,19 @@ const SecureLoans = ({ onBack }) => {
               </div>
 
               {/* Live Polling Status */}
-              {paymentStatus === 'pending' && currentPollingStatus && (
-                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-2xl">
-                  <p className="text-blue-800 flex items-center justify-center gap-2">
+              {isPollingActive && (
+                <div className="mb-6 p-5 bg-blue-50 border border-blue-200 rounded-2xl animate-pulse">
+                  <p className="text-blue-900 flex items-center justify-center gap-3 text-lg font-medium">
                     <i className="fas fa-sync-alt fa-spin"></i>
-                    Current status: <strong>{currentPollingStatus}</strong>
+                    {getDisplayStatus()}
                   </p>
                 </div>
               )}
 
-              {/* Final Status Messages */}
+              {/* Terminal Status Messages */}
               {paymentStatus === 'success' && (
-                <div className="mb-6 p-4 bg-green-50 border border-green-300 rounded-2xl">
-                  <p className="text-green-800 font-bold text-center">
+                <div className="mb-6 p-5 bg-green-50 border border-green-300 rounded-2xl">
+                  <p className="text-green-800 font-bold text-center text-lg">
                     <i className="fas fa-check-circle mr-2"></i>
                     Payment Successful! Your loan has been approved and sent.
                   </p>
@@ -258,33 +291,35 @@ const SecureLoans = ({ onBack }) => {
               )}
 
               {paymentStatus === 'failed' && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-2xl">
-                  <p className="text-red-800 font-bold text-center">
-                    Payment failed. Please try again.
+                <div className="mb-6 p-5 bg-red-50 border border-red-300 rounded-2xl">
+                  <p className="text-red-800 font-bold text-center text-lg">
+                    <i className="fas fa-times-circle mr-2"></i>
+                    Payment Failed – Please try again
                   </p>
                 </div>
               )}
 
               {paymentStatus === 'cancelled' && (
-                <div className="mb-6 p-4 bg-orange-50 border border-orange-300 rounded-2xl">
-                  <p className="text-orange-800 font-bold text-center">
-                    Payment was cancelled. You can try again.
+                <div className="mb-6 p-5 bg-orange-50 border border-orange-300 rounded-2xl">
+                  <p className="text-orange-800 font-bold text-center text-lg">
+                    <i className="fas fa-exclamation-triangle mr-2"></i>
+                    Payment Cancelled – You can retry
                   </p>
                 </div>
               )}
 
               <button
                 onClick={handlePaySecurityFee}
-                disabled={phoneNumber.length !== 9 || isPaying || paymentStatus === 'success'}
-                className="w-full btn-primary text-lg py-5 rounded-2xl font-bold shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed relative"
+                disabled={phoneNumber.length !== 9 || isPaying || !!paymentStatus}
+                className="w-full btn-primary text-lg py-5 rounded-2xl font-bold shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed relative transition"
               >
                 {isPaying ? (
                   <>
                     <i className="fas fa-spinner fa-spin mr-3"></i>
                     Sending STK Push...
                   </>
-                ) : paymentStatus === 'success' ? (
-                  'Payment Completed ✓'
+                ) : paymentStatus ? (
+                  paymentStatus === 'success' ? 'Payment Completed ✓' : 'Try Payment Again'
                 ) : (
                   `Pay KES ${securityFee.toLocaleString()} Security Fee`
                 )}
