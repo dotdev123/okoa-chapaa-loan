@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom'; // ← Added for navigation
 import toast, { Toaster } from 'react-hot-toast';
 
 const SecureLoans = ({ onBack }) => {
+  const navigate = useNavigate(); // ← Hook for programmatic navigation
+
   const [userData, setUserData] = useState({});
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loanTrackingId, setLoanTrackingId] = useState('');
   const [isPaying, setIsPaying] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState(''); // 'success', 'failed', 'cancelled'
-  const [clientReference, setClientReference] = useState(''); // Your own external ref (for tracking)
-  const [payheroReference, setPayheroReference] = useState(''); // PayHero's internal reference (used for polling)
+  const [clientReference, setClientReference] = useState('');
+  const [payheroReference, setPayheroReference] = useState('');
   const [currentPollingStatus, setCurrentPollingStatus] = useState('');
 
   const intervalRef = useRef(null);
@@ -54,17 +57,33 @@ const SecureLoans = ({ onBack }) => {
 
           if (rawStatus === 'SUCCESS') {
             setPaymentStatus('success');
-            toast.success('🎉 Payment Successful! Your loan has been approved and sent!', {
-              duration: 12000,
-            });
             clearInterval(intervalRef.current);
+
+            // Save approval timestamp for countdown on Approved page
+            const updatedUserData = {
+              ...userData,
+              approvalTime: Date.now(),
+              paymentStatus: 'success',
+            };
+            localStorage.setItem('okoaChapaaUser', JSON.stringify(updatedUserData));
+
+            // Show success toast
+            toast.success('Payment Successful! Redirecting to your approval...', {
+              duration: 5000,
+              icon: '🎉',
+            });
+
+            // Automatically navigate to Approved page after short delay
+            setTimeout(() => {
+              navigate('/approved');
+            }, 3000);
           } else if (rawStatus === 'FAILED') {
             setPaymentStatus('failed');
             toast.error('Payment failed. Please try again.', { duration: 8000 });
             clearInterval(intervalRef.current);
           } else if (rawStatus === 'CANCELLED') {
             setPaymentStatus('cancelled');
-            toast('Payment was cancelled. You can try again.', { icon: '⚠️', duration: 8000 });
+            toast('Payment was cancelled. You can try again.', { icon: 'Warning', duration: 8000 });
             clearInterval(intervalRef.current);
           }
         } else {
@@ -72,14 +91,13 @@ const SecureLoans = ({ onBack }) => {
         }
       } catch (err) {
         console.error('Polling error (likely 404 or HTML page):', err);
-        // Don't spam toast on network errors
       }
     }, 2000);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [payheroReference, phoneNumber, userData, loanTrackingId, clientReference]);
+  }, [payheroReference, phoneNumber, userData, loanTrackingId, clientReference, navigate]);
 
   const handlePaySecurityFee = async () => {
     if (phoneNumber.length !== 9 || isPaying) return;
@@ -104,10 +122,10 @@ const SecureLoans = ({ onBack }) => {
       const data = await res.json();
 
       if (data.success && data.payheroReference) {
-        setPayheroReference(data.payheroReference); // This is the key fix!
+        setPayheroReference(data.payheroReference);
 
-        toast.success('📱 STK Push sent! Please check your phone and complete payment.', {
-          icon: '💸',
+        toast.success('STK Push sent! Please check your phone and complete payment.', {
+          icon: 'Money',
           duration: 10000,
         });
 
@@ -122,7 +140,7 @@ const SecureLoans = ({ onBack }) => {
       toast.error('Failed to initiate payment. Please try again.');
       console.error('STK Push failed:', err);
 
-      // Reset all states
+      // Reset states
       setIsPaying(false);
       setClientReference('');
       setPayheroReference('');
@@ -165,7 +183,7 @@ const SecureLoans = ({ onBack }) => {
             padding: '16px 20px',
             maxWidth: '90vw',
           },
-          success: { icon: '🎉', style: { background: '#10B981' } },
+          success: { icon: 'Party', style: { background: '#10B981' } },
           error: { style: { background: '#EF4444' } },
         }}
       />
@@ -285,7 +303,7 @@ const SecureLoans = ({ onBack }) => {
                 <div className="mb-6 p-5 bg-green-50 border border-green-300 rounded-2xl">
                   <p className="text-green-800 font-bold text-center text-lg">
                     <i className="fas fa-check-circle mr-2"></i>
-                    Payment Successful! Your loan has been approved and sent.
+                    Payment Successful! Redirecting...
                   </p>
                 </div>
               )}
@@ -319,7 +337,7 @@ const SecureLoans = ({ onBack }) => {
                     Sending STK Push...
                   </>
                 ) : paymentStatus ? (
-                  paymentStatus === 'success' ? 'Payment Completed ✓' : 'Try Payment Again'
+                  paymentStatus === 'success' ? 'Processing Approval...' : 'Try Payment Again'
                 ) : (
                   `Pay KES ${securityFee.toLocaleString()} Security Fee`
                 )}

@@ -10,9 +10,9 @@ const BorrowLoans = ({ onBack }) => {
 
   const loanOptions = [
     { amount: 5500, fee: 100 },
-    { amount: 6800, fee: 130 },
+    { amount: 6800, fee: 150 },
     { amount: 7800, fee: 170 },
-    { amount: 9800, fee: 190 },
+    { amount: 9800, fee: 200 },
     { amount: 11200, fee: 230 },
     { amount: 16800, fee: 250 },
     { amount: 21200, fee: 270 },
