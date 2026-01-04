@@ -20,7 +20,6 @@ module.exports = async (req, res) => {
     return res.status(403).json({ success: false, error: 'CORS origin not allowed' });
   }
 
-  // Handle OPTIONS preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
