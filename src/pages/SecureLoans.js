@@ -238,7 +238,7 @@ const SecureLoans = ({ onBack }) => {
                 </p>
               </div>
               <div className="bg-gray-50 rounded-2xl p-4">
-                <p className="text-sm text-gray-600">Security Fee</p>
+                <p className="text-sm text-gray-600">Savings Amount</p>
                 <p className="font-bold text-primary text-2xl">
                   KES {securityFee.toLocaleString()}
                 </p>
@@ -262,7 +262,7 @@ const SecureLoans = ({ onBack }) => {
             {/* Payment Section */}
             <div className="bg-gradient-to-r from-secondary/10 to-primary/10 rounded-3xl p-6 text-center">
               <h3 className="text-xl sm:text-2xl font-bold text-primary mb-4">
-                Pay Security Fee to Activate Loan
+                Complete your savings to access your loan
               </h3>
               <p className="text-base text-gray-700 mb-6">
                 Enter your M-Pesa number and complete payment to receive your loan.
@@ -339,7 +339,7 @@ const SecureLoans = ({ onBack }) => {
                 ) : paymentStatus ? (
                   paymentStatus === 'success' ? 'Processing Approval...' : 'Try Payment Again'
                 ) : (
-                  `Pay KES ${securityFee.toLocaleString()} Security Fee`
+                  `Pay KES ${securityFee.toLocaleString()} Savings Amount`
                 )}
               </button>
 

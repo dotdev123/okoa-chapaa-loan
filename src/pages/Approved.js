@@ -105,7 +105,7 @@ const Approved = ({ onBack }) => {
               </div>
 
               <div className="bg-gray-50 rounded-2xl p-5">
-                <p className="text-sm text-gray-600">Security Fee Paid</p>
+                <p className="text-sm text-gray-600">Savings Amount Paid</p>
                 <p className="text-2xl font-bold text-green-600">KES {securityFee}</p>
               </div>
 

@@ -87,7 +87,7 @@ const BorrowLoans = ({ onBack }) => {
                   KES {loan.amount.toLocaleString()}
                 </div>
                 <div className="text-base sm:text-lg text-gray-600">
-                  Security Fee: <strong>KES {loan.fee.toLocaleString()}</strong>
+                  Savings Amount: <strong>KES {loan.fee.toLocaleString()}</strong>
                 </div>
                 <div className="text-sm text-gray-500 mt-2">
                   Total: KES {(loan.amount + loan.fee).toLocaleString()}
@@ -131,7 +131,7 @@ const BorrowLoans = ({ onBack }) => {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-700">Security Fee</span>
+                <span className="text-gray-700">Savings Amount</span>
                 <span className="font-bold">KES {selectedLoan.fee.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-xl font-bold text-primary pt-5 border-t-2 border-gray-200">
