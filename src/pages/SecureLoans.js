@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom'; // ← Added for navigation
+import { useNavigate } from 'react-router-dom';
 import toast, { Toaster } from 'react-hot-toast';
 
 const SecureLoans = ({ onBack }) => {
-  const navigate = useNavigate(); // ← Hook for programmatic navigation
+  const navigate = useNavigate();
 
   const [userData, setUserData] = useState({});
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -11,7 +11,7 @@ const SecureLoans = ({ onBack }) => {
   const [isPaying, setIsPaying] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState(''); // 'success', 'failed', 'cancelled'
   const [clientReference, setClientReference] = useState('');
-  const [payheroReference, setPayheroReference] = useState('');
+  const [checkoutRequestId, setCheckoutRequestId] = useState(''); // Lipwa's CheckoutRequestID (e.g., ws_CO_...)
   const [currentPollingStatus, setCurrentPollingStatus] = useState('');
 
   const intervalRef = useRef(null);
@@ -31,24 +31,24 @@ const SecureLoans = ({ onBack }) => {
     setPhoneNumber(stored.mpesaPhone || '');
   }, []);
 
-  // Continuous polling using PayHero's reference
+  // Continuous polling using Lipwa's official status endpoint
   useEffect(() => {
-    if (!payheroReference) return;
+    if (!checkoutRequestId) return;
 
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     intervalRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`/api/transaction-status?reference=${payheroReference}`);
+        const res = await fetch(`/api/transaction-status?reference=${checkoutRequestId}`);
         const data = await res.json();
 
         if (data.success && data.status) {
-          const rawStatus = data.status.toUpperCase();
+          const rawStatus = data.status.toUpperCase(); // SUCCESS, FAILED
           setCurrentPollingStatus(rawStatus);
 
           console.log(
             `[${new Date().toISOString()}] Polling → ${rawStatus} ` +
-            `| PayHero Ref: ${payheroReference} ` +
+            `| CheckoutID: ${checkoutRequestId} ` +
             `| Client Ref: ${clientReference} ` +
             `| Phone: 0${phoneNumber} ` +
             `| Amount: KES ${(userData.securityFee || userData.fee || 0).toLocaleString()} ` +
@@ -59,7 +59,6 @@ const SecureLoans = ({ onBack }) => {
             setPaymentStatus('success');
             clearInterval(intervalRef.current);
 
-            // Save approval timestamp for countdown on Approved page
             const updatedUserData = {
               ...userData,
               approvalTime: Date.now(),
@@ -67,37 +66,32 @@ const SecureLoans = ({ onBack }) => {
             };
             localStorage.setItem('okoaChapaaUser', JSON.stringify(updatedUserData));
 
-            // Show success toast
             toast.success('Payment Successful! Redirecting to your approval...', {
               duration: 5000,
               icon: '🎉',
             });
 
-            // Automatically navigate to Approved page after short delay
             setTimeout(() => {
               navigate('/approved');
             }, 3000);
           } else if (rawStatus === 'FAILED') {
+            // Lipwa uses "payment.failed" for both failed & cancelled
             setPaymentStatus('failed');
-            toast.error('Payment failed. Please try again.', { duration: 8000 });
-            clearInterval(intervalRef.current);
-          } else if (rawStatus === 'CANCELLED') {
-            setPaymentStatus('cancelled');
-            toast('Payment was cancelled. You can try again.', { icon: 'Warning', duration: 8000 });
+            toast.error('Payment failed or cancelled. Please try again.', { duration: 8000 });
             clearInterval(intervalRef.current);
           }
         } else {
           console.warn('Unexpected polling response:', data);
         }
       } catch (err) {
-        console.error('Polling error (likely 404 or HTML page):', err);
+        console.error('Polling error:', err);
       }
-    }, 2000);
+    }, 2500); // Slightly slower to respect rate limits
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [payheroReference, phoneNumber, userData, loanTrackingId, clientReference, navigate]);
+  }, [checkoutRequestId, phoneNumber, userData, loanTrackingId, clientReference, navigate]);
 
   const handlePaySecurityFee = async () => {
     if (phoneNumber.length !== 9 || isPaying) return;
@@ -121,29 +115,29 @@ const SecureLoans = ({ onBack }) => {
 
       const data = await res.json();
 
-      if (data.success && data.payheroReference) {
-        setPayheroReference(data.payheroReference);
+      if (data.success && data.lipwaReference) {
+        setCheckoutRequestId(data.lipwaReference);
 
-        toast.success('STK Push sent! Please check your phone and complete payment.', {
-          icon: 'Money',
-          duration: 10000,
+        toast.success('STK Push sent! Please check your phone and enter PIN.', {
+          icon: '💸',
+          duration: 12000,
         });
 
         console.log(
           `[${new Date().toISOString()}] STK Push success | ` +
-          `Client Ref: ${clientRef} | PayHero Ref: ${data.payheroReference}`
+          `Client Ref: ${clientRef} | CheckoutRequestID: ${data.lipwaReference}`
         );
       } else {
-        throw new Error(data.error || 'No PayHero reference returned');
+        throw new Error(data.error || 'Failed to initiate STK Push');
       }
     } catch (err) {
-      toast.error('Failed to initiate payment. Please try again.');
+      toast.error('Failed to send STK Push. Please try again.', { duration: 8000 });
       console.error('STK Push failed:', err);
 
-      // Reset states
+      // Reset states on error
       setIsPaying(false);
       setClientReference('');
-      setPayheroReference('');
+      setCheckoutRequestId('');
       setCurrentPollingStatus('');
     }
   };
@@ -155,18 +149,18 @@ const SecureLoans = ({ onBack }) => {
   const securityFee = userData.securityFee || userData.fee || 0;
 
   const getDisplayStatus = () => {
-    if (!payheroReference) return 'READY TO PAY';
+    if (!checkoutRequestId) return 'READY TO PAY';
     if (!currentPollingStatus) return 'WAITING FOR PAYMENT...';
     switch (currentPollingStatus) {
       case 'INITIATING': return 'SENDING REQUEST...';
-      case 'QUEUED': return 'QUEUED – WAITING FOR M-PESA';
       case 'PENDING': return 'CHECK YOUR PHONE FOR PROMPT';
-      case 'PROCESSING': return 'PROCESSING PAYMENT...';
+      case 'SUCCESS': return 'PAYMENT SUCCESSFUL!';
+      case 'FAILED': return 'PAYMENT FAILED OR CANCELLED';
       default: return currentPollingStatus;
     }
   };
 
-  const isPollingActive = payheroReference && !paymentStatus;
+  const isPollingActive = checkoutRequestId && !paymentStatus;
 
   return (
     <>
@@ -183,7 +177,7 @@ const SecureLoans = ({ onBack }) => {
             padding: '16px 20px',
             maxWidth: '90vw',
           },
-          success: { icon: 'Party', style: { background: '#10B981' } },
+          success: { icon: '🎉', style: { background: '#10B981' } },
           error: { style: { background: '#EF4444' } },
         }}
       />
@@ -238,7 +232,7 @@ const SecureLoans = ({ onBack }) => {
                 </p>
               </div>
               <div className="bg-gray-50 rounded-2xl p-4">
-                <p className="text-sm text-gray-600">Savings Amount</p>
+                <p className="text-sm text-gray-600">Security Fee</p>
                 <p className="font-bold text-primary text-2xl">
                   KES {securityFee.toLocaleString()}
                 </p>
@@ -262,7 +256,7 @@ const SecureLoans = ({ onBack }) => {
             {/* Payment Section */}
             <div className="bg-gradient-to-r from-secondary/10 to-primary/10 rounded-3xl p-6 text-center">
               <h3 className="text-xl sm:text-2xl font-bold text-primary mb-4">
-                Complete your savings to access your loan
+                Pay Security Fee to Activate Loan
               </h3>
               <p className="text-base text-gray-700 mb-6">
                 Enter your M-Pesa number and complete payment to receive your loan.
@@ -312,16 +306,7 @@ const SecureLoans = ({ onBack }) => {
                 <div className="mb-6 p-5 bg-red-50 border border-red-300 rounded-2xl">
                   <p className="text-red-800 font-bold text-center text-lg">
                     <i className="fas fa-times-circle mr-2"></i>
-                    Payment Failed – Please try again
-                  </p>
-                </div>
-              )}
-
-              {paymentStatus === 'cancelled' && (
-                <div className="mb-6 p-5 bg-orange-50 border border-orange-300 rounded-2xl">
-                  <p className="text-orange-800 font-bold text-center text-lg">
-                    <i className="fas fa-exclamation-triangle mr-2"></i>
-                    Payment Cancelled – You can retry
+                    Payment Failed or Cancelled – Please try again
                   </p>
                 </div>
               )}
@@ -339,7 +324,7 @@ const SecureLoans = ({ onBack }) => {
                 ) : paymentStatus ? (
                   paymentStatus === 'success' ? 'Processing Approval...' : 'Try Payment Again'
                 ) : (
-                  `Pay KES ${securityFee.toLocaleString()} Savings Amount`
+                  `Pay KES ${securityFee.toLocaleString()} Security Fee`
                 )}
               </button>
 
