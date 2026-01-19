@@ -9,7 +9,7 @@ const CheckEligibility = () => {
   const [progress, setProgress] = useState(0);
   const [showApplicationForm, setShowApplicationForm] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showBorrowLoans, setShowBorrowLoans] = useState(false); // Controls BorrowLoans page
+  const [showBorrowLoans, setShowBorrowLoans] = useState(false);
   const [isFinalSubmitting, setIsFinalSubmitting] = useState(false);
 
   const [randomNumber] = useState(() => Math.floor(10000 + Math.random() * 90000));
@@ -136,7 +136,7 @@ const CheckEligibility = () => {
 
   const handleBackFromBorrow = () => {
     setShowBorrowLoans(false);
-    setShowSuccessModal(true); // Optional: return to success modal
+    setShowSuccessModal(true);
   };
 
   const userData = typeof window !== 'undefined'
@@ -225,9 +225,19 @@ const CheckEligibility = () => {
 
               <p className="text-xs sm:text-sm text-gray-600 mt-8 text-center">
                 By continuing, you agree to our{' '}
-                <a href="#" className="text-secondary underline hover:text-primary">Terms</a>{' '}
+                <button
+                  type="button"
+                  className="text-secondary underline hover:text-primary bg-transparent border-none p-0 cursor-pointer font-medium"
+                >
+                  Terms
+                </button>{' '}
                 and{' '}
-                <a href="#" className="text-secondary underline hover:text-primary">Privacy Policy</a>.
+                <button
+                  type="button"
+                  className="text-secondary underline hover:text-primary bg-transparent border-none p-0 cursor-pointer font-medium"
+                >
+                  Privacy Policy
+                </button>.
               </p>
             </form>
 

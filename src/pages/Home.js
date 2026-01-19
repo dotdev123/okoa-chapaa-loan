@@ -161,12 +161,27 @@ const Home = () => {
               <strong className="block mb-3">Quick Links</strong>
               <a href="#about" className="block hover:text-accent">About Us</a>
               <a href="#how" className="block hover:text-accent">How It Works</a>
-              <a href="#" className="block hover:text-accent">FAQs</a>
+              <button
+                type="button"
+                className="block hover:text-accent bg-transparent border-none p-0 cursor-pointer text-inherit"
+              >
+                FAQs
+              </button>
             </div>
             <div>
               <strong className="block mb-3">Legal</strong>
-              <a href="#" className="block hover:text-accent">Terms of Service</a>
-              <a href="#" className="block hover:text-accent">Privacy Policy</a>
+              <button
+                type="button"
+                className="block hover:text-accent bg-transparent border-none p-0 cursor-pointer text-inherit"
+              >
+                Terms of Service
+              </button>
+              <button
+                type="button"
+                className="block hover:text-accent bg-transparent border-none p-0 cursor-pointer text-inherit"
+              >
+                Privacy Policy
+              </button>
             </div>
             <div>
               <strong className="block mb-3">Contact Us</strong>
